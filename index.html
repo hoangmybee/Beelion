@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUẢN LÝ QUỸ PHÒNG BE.E PRO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; }
+        .glass-card { background: white; border-radius: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05); }
+        .month-cell { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 8px; transition: all 0.2s; cursor: pointer; border: 1px solid #f1f5f9; }
+        .paid { background-color: #6366f1; color: white; border: none; font-weight: bold; }
+        .unpaid { background-color: #f1f5f9; color: #94a3b8; }
+        .not-joined { background-color: #f8fafc; color: #cbd5e1; cursor: not-allowed; }
+        .month-disabled { background-color: #f1f5f9; color: #cbd5e1; cursor: not-allowed; opacity: 0.5; border-style: dashed; }
+        .active-tab { border-bottom: 3px solid #6366f1; color: #6366f1; font-weight: 700; }
+        .loading-overlay { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; transition: opacity 0.5s; }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .locked-feature { filter: blur(2px); pointer-events: none; opacity: 0.6; }
+        body.is-admin .locked-feature { filter: none; pointer-events: auto; opacity: 1; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div id="loader" class="loading-overlay">
+        <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-indigo-600 font-bold animate-pulse text-sm">Đang tải dữ liệu...</p>
+    </div>
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+            <div class="flex items-center gap-4">
+                <div class="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg">
+                    <i class="fas fa-honey-bee fa-2x"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black uppercase tracking-tight">QUẢN LÝ QUỸ <span class="text-indigo-600">BE.E PRO</span></h1>
+                    <div class="flex items-center gap-2">
+                        <span id="roleBadge" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-wider">Chế độ xem</span>
+                        <button onclick="promptAdmin()" id="adminLoginBtn" class="text-[9px] font-bold text-indigo-500 hover:underline uppercase">Mở khóa Thủ quỹ</button>
+                        <button onclick="logoutAdmin()" id="adminLogoutBtn" class="hidden text-[9px] font-bold text-red-500 hover:underline uppercase">Đăng xuất</button>
+                    </div>
+                </div>
+                <div class="relative ml-4">
+                    <select id="yearSelector" onchange="changeYear(this.value)" class="bg-indigo-50 text-indigo-700 font-black px-4 py-2 rounded-xl outline-none appearance-none cursor-pointer pr-8 border-none">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                        <option value="2027">2027</option>
+                    </select>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Số dư quỹ hiện tại</p>
+                <p id="totalBalance" class="text-3xl font-black text-indigo-600">0đ</p>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="flex overflow-x-auto gap-6 mb-6 px-4 border-b border-slate-200 no-scrollbar">
+            <button onclick="switchTab('thu')" id="nav-thu" class="py-4 text-slate-400 uppercase tracking-wide text-[11px] whitespace-nowrap">Thu Quỹ</button>
+            <button onclick="switchTab('chi')" id="nav-chi" class="py-4 text-slate-400 uppercase tracking-wide text-[11px] whitespace-nowrap">Chi Tiêu</button>
+            <button onclick="switchTab('report')" id="nav-report" class="py-4 active-tab uppercase tracking-wide text-[11px] whitespace-nowrap">Bảng Theo Dõi</button>
+            <button onclick="switchTab('settings')" id="nav-settings" class="py-4 text-slate-400 uppercase tracking-wide text-[11px] whitespace-nowrap text-indigo-500"><i class="fas fa-cog"></i> Cài Đặt</button>
+        </nav>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div id="sidePanel" class="lg:col-span-5 space-y-6">
+                <!-- Panel Thu -->
+                <div id="panel-thu" class="tab-panel hidden space-y-6">
+                    <div class="glass-card p-6 border-indigo-100 border-2">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-sm font-bold uppercase text-indigo-600"><i class="fas fa-calendar-check mr-2"></i> Thu quỹ định kỳ</h2>
+                            <button onclick="selectAllMembers()" class="text-[10px] font-bold text-indigo-500 hover:underline uppercase">Chọn tất cả</button>
+                        </div>
+                        <div class="space-y-4 locked-feature">
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Thành viên</label>
+                                <div id="memberChecklist" class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 bg-slate-50 rounded-2xl custom-scroll border border-slate-100"></div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Chọn tháng đóng quỹ</label>
+                                <div id="monthChecklist" class="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100"></div>
+                                <p class="text-[9px] text-slate-400 mt-2 font-medium">* Tháng sẽ bị mờ nếu tất cả người được chọn đã đóng đủ tháng đó.</p>
+                            </div>
+                            <div class="bg-indigo-50 p-4 rounded-2xl flex justify-between items-center border border-indigo-100">
+                                <span class="text-xs font-bold text-indigo-700 uppercase">Tổng thu dự kiến:</span>
+                                <span id="previewTotal" class="text-lg font-black text-indigo-700">0đ</span>
+                            </div>
+                            <button onclick="processBatchThu()" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all uppercase text-sm">Xác nhận thu quỹ</button>
+                        </div>
+                        <div id="thuLockMsg" class="text-center py-4 text-[10px] font-bold text-amber-600 uppercase tracking-widest">Vui lòng mở khóa để thao tác</div>
+                    </div>
+
+                    <div class="glass-card p-6 border-emerald-100 border-2">
+                        <h2 class="text-sm font-bold uppercase text-emerald-600 mb-4"><i class="fas fa-gift mr-2"></i> Thu ngoài quỹ</h2>
+                        <div class="space-y-3 locked-feature">
+                            <input type="number" id="otherThuAmt" placeholder="Số tiền..." class="w-full p-3 border rounded-xl outline-none text-sm font-bold text-emerald-600 bg-slate-50">
+                            <input type="text" id="otherThuNote" placeholder="Nguồn thu (VD: Thưởng dự án X...)" class="w-full p-3 border rounded-xl outline-none text-sm bg-slate-50">
+                            <button onclick="processOtherThu()" class="w-full bg-emerald-500 text-white font-bold py-3 rounded-xl hover:bg-emerald-600 text-xs uppercase tracking-wider">Ghi nhận thu ngoài</button>
+                        </div>
+                        <div id="otherThuLockMsg" class="text-center py-4 text-[10px] font-bold text-amber-600 uppercase tracking-widest">Vui lòng mở khóa</div>
+                    </div>
+                </div>
+
+                <!-- Panel Chi -->
+                <div id="panel-chi" class="tab-panel hidden space-y-6">
+                    <div class="glass-card p-6 border-red-50 border-2">
+                        <h2 class="text-sm font-bold mb-4 uppercase text-red-600"><i class="fas fa-shopping-cart mr-2"></i> Ghi nhận chi tiêu</h2>
+                        <div class="space-y-4 locked-feature">
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1 px-1">Số tiền</label>
+                                <input type="number" id="chiAmt" placeholder="0" class="w-full p-4 border rounded-2xl outline-none font-bold text-red-600 bg-slate-50 text-lg">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1 px-1">Hạng mục chi</label>
+                                <select id="chiCategory" class="w-full p-4 border rounded-2xl outline-none text-sm bg-slate-50 font-bold text-slate-700">
+                                    <option value="Ăn uống / Liên hoan">Ăn uống / Liên hoan</option>
+                                    <option value="Văn phòng phẩm">Văn phòng phẩm</option>
+                                    <option value="Sinh nhật / Quà cáp">Sinh nhật / Quà cáp</option>
+                                    <option value="Cơ sở vật chất">Cơ sở vật chất</option>
+                                    <option value="Chi khác">Chi khác...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1 px-1">Ghi chú chi tiết</label>
+                                <input type="text" id="chiNote" placeholder="Ví dụ: Mua trà sữa cho team..." class="w-full p-4 border rounded-2xl outline-none text-sm bg-slate-50">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1 px-1">Ngày chi</label>
+                                <input type="date" id="chiDate" class="w-full p-4 border rounded-2xl outline-none text-sm text-slate-500 bg-slate-50">
+                            </div>
+                            <button onclick="processChi()" class="w-full bg-red-500 text-white font-bold py-4 rounded-2xl hover:bg-red-600 shadow-lg uppercase text-sm">Lưu phiếu chi</button>
+                        </div>
+                        <div id="chiLockMsg" class="text-center py-4 text-[10px] font-bold text-amber-600 uppercase tracking-widest">Vui lòng mở khóa để thao tác</div>
+                    </div>
+                </div>
+
+                <!-- Panel Cài đặt -->
+                <div id="panel-settings" class="tab-panel hidden space-y-6">
+                    <div class="glass-card p-6 border-indigo-100 border-2">
+                        <h2 class="text-sm font-bold uppercase text-indigo-600 mb-4">Quản lý nhân sự</h2>
+                        <div class="locked-feature">
+                            <div id="memberEditor" class="space-y-2 mb-6 max-h-60 overflow-y-auto custom-scroll"></div>
+                            <div class="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                                <h3 class="text-[10px] font-bold text-slate-500 uppercase mb-3">Thêm thành viên mới</h3>
+                                <div class="grid grid-cols-2 gap-2 mb-2">
+                                    <input type="text" id="newMemName" placeholder="Họ và tên..." class="col-span-2 p-3 border rounded-xl text-sm bg-white outline-none">
+                                    <input type="number" id="newMemRate" placeholder="Mức đóng..." class="p-3 border rounded-xl text-sm bg-white outline-none">
+                                    <div class="flex gap-1 items-center bg-white border rounded-xl px-2">
+                                        <span class="text-[9px] font-bold text-slate-400 uppercase">Bắt đầu:</span>
+                                        <select id="newMemMonth" class="text-xs border-none outline-none font-bold text-indigo-600 py-2">
+                                            <script>for(let i=1;i<=12;i++) document.write(`<option value="${i}">T${i}</option>`)</script>
+                                        </select>
+                                        <select id="newMemYear" class="text-xs border-none outline-none font-bold text-indigo-600 py-2">
+                                            <option value="2024">2024</option>
+                                            <option value="2025">2025</option>
+                                            <option value="2026" selected>2026</option>
+                                            <option value="2027">2027</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button onclick="addNewMember()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs uppercase shadow-md hover:bg-indigo-700 transition-colors">Thêm vào danh sách</button>
+                            </div>
+                        </div>
+                        <div id="settingsLockMsg" class="text-center py-4 text-[10px] font-bold text-amber-600 uppercase tracking-widest">Vui lòng mở khóa để thao tác</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="mainContent" class="lg:col-span-7 space-y-6">
+                <!-- Panel Bảng Theo Dõi -->
+                <div id="panel-report" class="tab-panel glass-card p-6 overflow-x-auto min-h-[400px]">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-sm font-bold uppercase">Bảng đóng quỹ <span class="currentYearText">2026</span></h2>
+                        <div class="flex items-center gap-4">
+                             <div class="flex items-center gap-1"><div class="w-3 h-3 paid rounded"></div><span class="text-[9px] font-bold uppercase text-slate-400">Đã đóng</span></div>
+                             <div class="flex items-center gap-1"><div class="w-3 h-3 unpaid rounded"></div><span class="text-[9px] font-bold uppercase text-slate-400">Chưa đóng</span></div>
+                        </div>
+                    </div>
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-[10px] text-slate-400 uppercase border-b border-slate-100">
+                                <th class="text-left pb-4 min-w-[100px]">Thành viên</th>
+                                <script>for(let i=1;i<=12;i++) document.write(`<th class="text-center pb-4">T${i}</th>`)</script>
+                            </tr>
+                        </thead>
+                        <tbody id="matrixBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="glass-card p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-sm font-bold uppercase">Lịch sử giao dịch mới nhất</h2>
+                    </div>
+                    <div class="space-y-3 custom-scroll max-h-[600px] overflow-y-auto pr-1" id="historyList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Passcode Modal -->
+    <div id="pwModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-[110]">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-xs text-center">
+            <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-lock fa-lg"></i>
+            </div>
+            <h3 class="font-black uppercase text-slate-800 mb-1">Xác thực Thủ Quỹ</h3>
+            <p class="text-[10px] text-slate-400 mb-6 font-bold uppercase">Nhập mã PIN để tiếp tục</p>
+            <input type="password" id="pwInput" class="w-full p-4 bg-slate-100 rounded-2xl outline-none text-center font-bold tracking-[1em] mb-4 text-xl" placeholder="••••" maxlength="4">
+            <div class="flex gap-2">
+                <button onclick="closePwModal()" class="flex-1 py-3 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Hủy bỏ</button>
+                <button onclick="checkAdminPw()" class="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">Mở khóa</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 right-6 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl opacity-0 transition-all z-[150] pointer-events-none text-xs font-bold uppercase tracking-wider"></div>
+
+    <script>
+        const ADMIN_PW = "1234";
+
+        const defaultMembers = [
+            { id: '1', name: "NGỌC", rate: 200000, startMonth: 1, startYear: 2024 },
+            { id: '2', name: "MY", rate: 100000, startMonth: 1, startYear: 2024 },
+            { id: '3', name: "LUÂN", rate: 150000, startMonth: 1, startYear: 2024 },
+            { id: '4', name: "TRẤN", rate: 100000, startMonth: 1, startYear: 2024 },
+            { id: '5', name: "NGÂN", rate: 100000, startMonth: 1, startYear: 2024 },
+            { id: '6', name: "NHANH", rate: 150000, startMonth: 1, startYear: 2024 },
+            { id: '7', name: "VÂN", rate: 100000, startMonth: 1, startYear: 2024 },
+            { id: '8', name: "SUK", rate: 100000, startMonth: 1, startYear: 2024 },
+            { id: '9', name: "KEN", rate: 150000, startMonth: 1, startYear: 2024 },
+            { id: '10', name: "MỸ", rate: 100000, startMonth: 1, startYear: 2024 },
+            { id: '11', name: "NGHĨA", rate: 100000, startMonth: 1, startYear: 2024 }
+        ];
+
+        // Lưu danh sách tháng đã đóng mặc định không cần giao dịch (Năm 2026, các tháng 1, 2, 3)
+        const paidMonthsExcludingTrans = [1, 2, 3];
+
+        let state = {
+            members: JSON.parse(localStorage.getItem('bee_members_v2')) || defaultMembers,
+            trans: JSON.parse(localStorage.getItem('bee_trans_v2')) || [],
+            year: 2026,
+            isAdmin: false,
+            pendingTab: null
+        };
+
+        const saveToLocal = () => {
+            localStorage.setItem('bee_members_v2', JSON.stringify(state.members));
+            localStorage.setItem('bee_trans_v2', JSON.stringify(state.trans));
+        };
+
+        const formatVND = (n) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
+        const showToast = (m) => {
+            const t = document.getElementById('toast');
+            t.innerText = m; t.style.opacity = '1'; t.style.transform = 'translateY(0)';
+            setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(20px)'; }, 3000);
+        };
+
+        window.promptAdmin = () => {
+            document.getElementById('pwModal').classList.remove('hidden');
+            document.getElementById('pwInput').focus();
+        };
+        window.closePwModal = () => {
+            document.getElementById('pwModal').classList.add('hidden');
+            document.getElementById('pwInput').value = '';
+            state.pendingTab = null;
+        };
+        window.checkAdminPw = () => {
+            if(document.getElementById('pwInput').value === ADMIN_PW) {
+                state.isAdmin = true;
+                document.body.classList.add('is-admin');
+                document.getElementById('roleBadge').className = "px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-black uppercase tracking-wider";
+                document.getElementById('roleBadge').innerText = "Thủ quỹ";
+                document.getElementById('adminLoginBtn').classList.add('hidden');
+                document.getElementById('adminLogoutBtn').classList.remove('hidden');
+                ['thu', 'otherThu', 'chi', 'settings'].forEach(id => {
+                   const msg = document.getElementById(id + 'LockMsg');
+                   if(msg) msg.classList.add('hidden');
+                });
+                closePwModal();
+                showToast("Đã mở khóa!");
+                if(state.pendingTab) switchTab(state.pendingTab);
+                render();
+            } else {
+                showToast("Mã PIN không đúng!");
+            }
+        };
+        window.logoutAdmin = () => {
+            state.isAdmin = false;
+            document.body.classList.remove('is-admin');
+            document.getElementById('roleBadge').className = "px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-wider";
+            document.getElementById('roleBadge').innerText = "Chế độ xem";
+            document.getElementById('adminLoginBtn').classList.remove('hidden');
+            document.getElementById('adminLogoutBtn').classList.add('hidden');
+            ['thu', 'otherThu', 'chi', 'settings'].forEach(id => {
+                const msg = document.getElementById(id + 'LockMsg');
+                if(msg) msg.classList.remove('hidden');
+            });
+            switchTab('report');
+            showToast("Đã đăng xuất");
+            render();
+        };
+
+        window.switchTab = (id) => {
+            if(!state.isAdmin && id !== 'report') {
+                state.pendingTab = id;
+                promptAdmin();
+                return;
+            }
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById('panel-'+id).classList.remove('hidden');
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('active-tab', 'text-indigo-600'));
+            document.getElementById('nav-'+id).classList.add('active-tab');
+            
+            if(id === 'report') {
+                document.getElementById('sidePanel').classList.add('hidden', 'lg:block');
+                document.getElementById('mainContent').className = "lg:col-span-12 space-y-6";
+            } else {
+                document.getElementById('sidePanel').classList.remove('hidden');
+                document.getElementById('mainContent').className = "lg:col-span-7 space-y-6";
+            }
+        };
+
+        const render = () => {
+            document.querySelectorAll('.currentYearText').forEach(el => el.innerText = state.year);
+
+            // Matrix Logic
+            const matrix = document.getElementById('matrixBody');
+            matrix.innerHTML = state.members.map(m => {
+                let cells = '';
+                for(let i=1; i<=12; i++) {
+                    const isJoined = (state.year > m.startYear) || (state.year === m.startYear && i >= m.startMonth);
+                    if(!isJoined) {
+                        cells += `<td class="py-2"><div class="month-cell mx-auto not-joined"><i class="fas fa-minus text-[8px]"></i></div></td>`;
+                    } else {
+                        // Kiểm tra xem tháng này có nằm trong danh sách đã đóng mặc định của năm 2026 không
+                        const isPrepaid = state.year === 2026 && paidMonthsExcludingTrans.includes(i);
+                        // Hoặc kiểm tra xem có giao dịch thực tế không
+                        const hasTran = state.trans.some(t => t.mId === m.id && t.month === i && t.year === state.year && t.type === 'thu');
+                        const isPaid = isPrepaid || hasTran;
+                        
+                        cells += `<td class="py-2"><div class="month-cell mx-auto ${isPaid ? 'paid' : 'unpaid'}">${isPaid ? '✓' : i}</div></td>`;
+                    }
+                }
+                return `<tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors"><td class="py-3 text-[11px] font-bold uppercase text-slate-700">${m.name}</td>${cells}</tr>`;
+            }).join('');
+
+            // Member Checklist
+            const prevCheckedMem = Array.from(document.querySelectorAll('.mem-check:checked')).map(c => c.value);
+            document.getElementById('memberChecklist').innerHTML = state.members.map(m => `
+                <label class="flex items-center gap-2 p-2 hover:bg-white rounded-xl cursor-pointer">
+                    <input type="checkbox" value="${m.id}" ${prevCheckedMem.includes(m.id) ? 'checked' : ''} class="mem-check w-4 h-4 accent-indigo-600 rounded">
+                    <span class="text-[10px] font-bold uppercase text-slate-600">${m.name}</span>
+                </label>
+            `).join('');
+            document.querySelectorAll('.mem-check').forEach(el => el.onchange = renderMonths);
+
+            renderMonths();
+
+            // Member Settings
+            document.getElementById('memberEditor').innerHTML = state.members.map(m => `
+                <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                    <div class="flex-1">
+                         <p class="text-[10px] font-black uppercase text-slate-700">${m.name}</p>
+                         <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">BẮT ĐẦU: T${m.startMonth}/${m.startYear}</p>
+                    </div>
+                    <div class="text-right px-2">
+                        <input type="number" value="${m.rate}" onchange="updateMember('${m.id}', this.value)" class="w-20 bg-transparent text-[11px] font-black text-indigo-600 outline-none text-right border-b border-indigo-100">
+                    </div>
+                    <button onclick="removeMember('${m.id}')" class="text-slate-300 hover:text-red-500 px-2 transition-colors"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            `).join('');
+
+            // Số dư hiện tại (Chỉ tính các giao dịch thực tế có trong state.trans)
+            const bal = state.trans.reduce((acc, t) => (t.type === 'thu' || t.type === 'other_thu') ? acc + t.amount : acc - t.amount, 0);
+            document.getElementById('totalBalance').innerText = formatVND(bal);
+
+            // Danh sách lịch sử
+            document.getElementById('historyList').innerHTML = [...state.trans].reverse().slice(0, 40).map(t => {
+                let icon = 'fa-coins text-emerald-500';
+                if(t.type === 'chi') icon = 'fa-shopping-cart text-red-500';
+                if(t.type === 'other_thu') icon = 'fa-gift text-blue-500';
+                return `
+                <div class="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-sm"><i class="fas ${icon}"></i></div>
+                        <div>
+                            <p class="text-[11px] font-bold text-slate-700 uppercase tracking-tight">${t.note}</p>
+                            <p class="text-[9px] text-slate-400 font-medium uppercase tracking-widest">${t.date} ${t.category ? '• ' + t.category : ''}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <p class="font-black text-sm ${(t.type==='thu'||t.type==='other_thu')?'text-emerald-500':'text-red-500'}">${(t.type==='thu'||t.type==='other_thu')?'+':'-'}${formatVND(t.amount)}</p>
+                        ${state.isAdmin ? `<button onclick="deleteTran('${t.id}')" class="text-slate-200 hover:text-red-500 transition-colors"><i class="fas fa-times-circle"></i></button>` : ''}
+                    </div>
+                </div>
+                `;
+            }).join('') || '<p class="text-center text-slate-300 py-10 italic text-xs uppercase font-bold tracking-widest">Chưa có giao dịch phát sinh</p>';
+        };
+
+        const renderMonths = () => {
+            const selectedMIds = Array.from(document.querySelectorAll('.mem-check:checked')).map(c => c.value);
+            const checklist = document.getElementById('monthChecklist');
+            const currentlyCheckedMonths = Array.from(document.querySelectorAll('.month-check:checked')).map(c => c.value);
+
+            let html = '';
+            for(let i=1; i<=12; i++) {
+                let allPaid = selectedMIds.length > 0;
+                
+                selectedMIds.forEach(mId => {
+                    const m = state.members.find(x => x.id === mId);
+                    const isJoined = (state.year > m.startYear) || (state.year === m.startYear && i >= m.startMonth);
+                    if (isJoined) {
+                        const isPrepaid = state.year === 2026 && paidMonthsExcludingTrans.includes(i);
+                        const hasTran = state.trans.some(t => t.mId === mId && t.month === i && t.year === state.year && t.type === 'thu');
+                        if(!isPrepaid && !hasTran) allPaid = false;
+                    }
+                });
+
+                if (allPaid && selectedMIds.length > 0) {
+                    html += `<div class="month-cell w-full month-disabled font-bold" title="Tất cả người chọn đã đóng tháng này">T${i}</div>`;
+                } else {
+                    const isChecked = currentlyCheckedMonths.includes(i.toString());
+                    html += `
+                    <label>
+                        <input type="checkbox" value="${i}" ${isChecked ? 'checked' : ''} class="hidden month-check">
+                        <div class="month-cell w-full border rounded-xl font-bold ${isChecked ? 'paid' : 'unpaid'}">T${i}</div>
+                    </label>`;
+                }
+            }
+            checklist.innerHTML = html;
+            document.querySelectorAll('.month-check').forEach(el => {
+                el.onchange = (e) => {
+                    e.target.nextElementSibling.className = e.target.checked ? "month-cell w-full border rounded-xl font-bold paid" : "month-cell w-full border rounded-xl font-bold unpaid";
+                    calculatePreview();
+                }
+            });
+            calculatePreview();
+        };
+
+        const calculatePreview = () => {
+            const mIds = Array.from(document.querySelectorAll('.mem-check:checked')).map(c => c.value);
+            const months = Array.from(document.querySelectorAll('.month-check:checked')).map(c => parseInt(c.value));
+            let total = 0;
+            mIds.forEach(id => {
+                const m = state.members.find(x => x.id === id);
+                total += (m?.rate || 0) * months.length;
+            });
+            document.getElementById('previewTotal').innerText = formatVND(total);
+        };
+
+        window.selectAllMembers = () => {
+            const checks = document.querySelectorAll('.mem-check');
+            const allChecked = Array.from(checks).every(c => c.checked);
+            checks.forEach(c => c.checked = !allChecked);
+            renderMonths();
+        };
+
+        window.processBatchThu = () => {
+            const mIds = Array.from(document.querySelectorAll('.mem-check:checked')).map(c => c.value);
+            const months = Array.from(document.querySelectorAll('.month-check:checked')).map(c => parseInt(c.value));
+            if(!mIds.length || !months.length) return showToast("CHƯA CHỌN THÀNH VIÊN/THÁNG!");
+            
+            const today = new Date().toLocaleDateString('vi-VN');
+            let addedCount = 0;
+
+            months.forEach(mIdx => {
+                mIds.forEach(mId => {
+                    const m = state.members.find(x => x.id === mId);
+                    const isJoined = (state.year > m.startYear) || (state.year === m.startYear && mIdx >= m.startMonth);
+                    if(!isJoined) return;
+
+                    const isPrepaid = state.year === 2026 && paidMonthsExcludingTrans.includes(mIdx);
+                    const exists = state.trans.some(t => t.mId === mId && t.month === mIdx && t.year === state.year && t.type === 'thu');
+                    
+                    if(!isPrepaid && !exists) {
+                        state.trans.push({ 
+                            id: 'T' + Date.now() + Math.random().toString(36).substr(2,5), 
+                            mId, type: 'thu', 
+                            amount: m.rate, month: mIdx, year: state.year, 
+                            note: `THU QUỸ T${mIdx} - ${m.name}`, 
+                            date: today 
+                        });
+                        addedCount++;
+                    }
+                });
+            });
+            
+            saveToLocal();
+            document.querySelectorAll('.mem-check, .month-check').forEach(c => c.checked = false);
+            showToast(`ĐÃ GHI NHẬN ${addedCount} KHOẢN THU MỚI!`);
+            render();
+        };
+
+        window.processOtherThu = () => {
+            const amt = parseInt(document.getElementById('otherThuAmt').value);
+            const note = document.getElementById('otherThuNote').value.trim();
+            if(!amt || !note) return showToast("NHẬP ĐỦ THÔNG TIN!");
+            state.trans.push({ id: 'O' + Date.now(), type: 'other_thu', amount: amt, note: note.toUpperCase(), date: new Date().toLocaleDateString('vi-VN'), year: state.year });
+            saveToLocal();
+            document.getElementById('otherThuAmt').value = '';
+            document.getElementById('otherThuNote').value = '';
+            showToast("ĐÃ GHI NHẬN THU NGOÀI!");
+            render();
+        };
+
+        window.processChi = () => {
+            const amt = parseInt(document.getElementById('chiAmt').value);
+            const cat = document.getElementById('chiCategory').value;
+            const note = document.getElementById('chiNote').value.trim();
+            const date = document.getElementById('chiDate').value;
+            if(!amt || !note || !date) return showToast("NHẬP ĐỦ THÔNG TIN CHI!");
+            const dateParts = date.split('-');
+            const displayDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+            state.trans.push({ id: 'C' + Date.now(), type: 'chi', amount: amt, category: cat, note: note.toUpperCase(), date: displayDate, year: state.year });
+            saveToLocal();
+            document.getElementById('chiAmt').value = '';
+            document.getElementById('chiNote').value = '';
+            showToast("ĐÃ LƯU PHIẾU CHI!");
+            render();
+        };
+
+        window.addNewMember = () => {
+            const name = document.getElementById('newMemName').value.trim();
+            const rate = parseInt(document.getElementById('newMemRate').value);
+            const sMonth = parseInt(document.getElementById('newMemMonth').value);
+            const sYear = parseInt(document.getElementById('newMemYear').value);
+            if(name && rate) {
+                state.members.push({ id: 'M' + Date.now(), name: name.toUpperCase(), rate, startMonth: sMonth, startYear: sYear });
+                saveToLocal();
+                render();
+                document.getElementById('newMemName').value = '';
+                document.getElementById('newMemRate').value = '';
+                showToast("ĐÃ THÊM THÀNH VIÊN!");
+            } else showToast("VUI LÒNG NHẬP TÊN VÀ MỨC ĐÓNG!");
+        };
+
+        window.updateMember = (id, rate) => {
+            const m = state.members.find(x => x.id === id);
+            if(m) m.rate = parseInt(rate);
+            saveToLocal();
+            showToast("ĐÃ CẬP NHẬT MỨC ĐÓNG!");
+        };
+
+        window.removeMember = (id) => {
+            if(confirm("XÁC NHẬN XÓA THÀNH VIÊN KHỎI DANH SÁCH?")) {
+                state.members = state.members.filter(x => x.id !== id);
+                saveToLocal();
+                render();
+            }
+        };
+
+        window.deleteTran = (id) => {
+            if(confirm("BẠN CÓ CHẮC MUỐN XÓA GIAO DỊCH NÀY?")) {
+                state.trans = state.trans.filter(x => x.id !== id);
+                saveToLocal();
+                render();
+                showToast("ĐÃ XÓA!");
+            }
+        };
+
+        window.changeYear = (v) => { state.year = parseInt(v); render(); };
+
+        window.onload = () => {
+            const today = new Date();
+            document.getElementById('chiDate').valueAsDate = today;
+            setTimeout(() => { 
+                document.getElementById('loader').style.opacity = '0'; 
+                setTimeout(() => document.getElementById('loader').remove(), 500); 
+            }, 800);
+            render();
+            switchTab('report');
+        };
+    </script>
+</body>
+</html>
